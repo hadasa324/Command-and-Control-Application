@@ -29,7 +29,7 @@ class ClientThread(threading.Thread):
     def _recv(self ,socket):
         data = b""
         while True:
-            chunk = socket.recv(4096)
+            chunk = socket.recv(1024)
             if not chunk or b"}" in chunk:
                 data += chunk
                 break
@@ -332,7 +332,7 @@ class Server:
         with open(filepath, "r") as f:
             command_payload = f.read()
         try:
-            command_args = self.process_arguments()
+            command_args = self.process_arguments(command_id)
         except Exception as e:
                 print(f'Error: {str(e)}')
 
@@ -346,14 +346,17 @@ class Server:
         return command
     
 #Take valid arguments input
-    def process_arguments(self):
+    def process_arguments(self , command_id):
+        processed_arguments = []
+        #case it upload_file
+        if command_id == 1:
+            self.upload_args(processed_arguments)
+            return processed_arguments
         
         input_str = input(colored("Enter Arguments (with comma-separated): \n" ,"yellow"))
         # Split the input string into individual arguments by commas
         arguments = input_str.split(',')
-
         # Remove any arguments that are equal to "enter" or "space"
-        processed_arguments = []
         for argument in arguments:
             argument = argument.strip()  # Remove leading/trailing whitespace
             if argument.lower() not in (" ", ""):
@@ -361,6 +364,23 @@ class Server:
 
         return processed_arguments
     
+#Handle file_upload args
+    def upload_args(self ,processed_arguments):
+        print(colored("Enter file path: \n" ,"yellow"))
+        while True:
+            input_str = input(colored(">>>" , "blue"))
+            try:
+                with open(input_str.strip('"'), 'rb') as f:
+                    file_content = f.read()
+                break
+            except:
+                print(colored("The file is not found, Try again.", "red"))
+        encoded_file_content = base64.b64encode(file_content)
+        processed_arguments.append(encoded_file_content.decode('utf-8'))
+        print(colored("Enter file name or destenation with a suffix : \n" ,"yellow"))
+        name = input(colored(">>>" , "blue"))
+        processed_arguments.append(name)
+        
 
 #Send data to the client    
     def _send(self, socket, data):

@@ -67,7 +67,7 @@ class Client():
         if not command_args:
             result = method()
         else:
-            result = method(command_args)
+           result = method(command_args)
         
         # Transmit command execution results to server
        
@@ -141,14 +141,19 @@ class Client():
 
     #Recive data from the server
     def _recv(self ,socket):
-                data = socket.recv(4000).decode("utf-8")
-                if data:
-                    try:
-                        deserialized = json.loads(data)
-                    except (TypeError, ValueError):
-                        raise Exception('Data received was not in JSON format')
-                    return deserialized
-
+        data = b""
+        while True:
+            chunk = socket.recv(1024)
+            if not chunk or b"}" in chunk:
+                data += chunk
+                break
+            data += chunk
+        try:
+            print("out")
+            deserialized = json.loads(data.decode("utf-8"))
+        except (TypeError, ValueError , json.decoder.JSONDecodeError) as e:
+                raise Exception('Data received was not in JSON format' + str(e))
+        return deserialized
 
 
                 
