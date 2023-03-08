@@ -408,8 +408,7 @@ class Server:
 #Kill client
     def kill_client(self , client):
         # Wait for the threading.Event() object
-        self._send(client.conn , self.exit)
-        client.data_received.wait()
+        self._send(client , self.exit)
         return
 
 #Kill all the clients

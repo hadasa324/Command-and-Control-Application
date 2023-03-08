@@ -99,11 +99,12 @@ class Client():
                     break
                 else:
                  self.handle_message(message)
+        self.running = False
         self.client_socket.close()
 
     # Sending keep alive messages to the server
     def send_keep_alive(self):
-        while True:
+        while self.running:
             try:
                 keep_alive_message = {'command_type': 'keep_alive' }
                 self._send(self.client_socket , keep_alive_message)
