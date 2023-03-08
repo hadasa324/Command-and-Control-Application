@@ -65,6 +65,7 @@ class ClientThread(threading.Thread):
                 break
             if type == 'keep_alive':
                 self.last_alive_time = time.time()
+                continue
             else:
                 command_id = message["command_id"]
                 # print(command_id)

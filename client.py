@@ -35,7 +35,7 @@ class Client():
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.client_socket.connect((self.server_host, self.server_port))
         # print("connected")
-        # threading.Thread(target=self.send_keep_alive).start()
+        threading.Thread(target=self.send_keep_alive).start()
         self.listen_for_messages()
     
         
