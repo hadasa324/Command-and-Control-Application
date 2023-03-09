@@ -82,7 +82,9 @@ class ClientThread(threading.Thread):
                     self.add_result(command_id ,result)
         self.conn.close()
         self.server.remove_client_thread(self.id)
-        self.data_received.set()
+      
+       
+        
         
         
 
@@ -263,10 +265,13 @@ class Server:
 #Remove ClientThread from client_threads list
     def remove_client_thread(self, client_id):
         with self.client_threads_lock:
+            client = self.client_threads[client_id]
             del self.client_threads[client_id]
-            if len(self.client_threads) == 0:
-               self.have_conn = False
+        if len(self.client_threads) == 0:
+           self.have_conn = False
         print("Client disconnected: {}".format(client_id))
+        client.data_received.set()
+        
         
          
  
@@ -392,6 +397,7 @@ class Server:
             raise Exception('You can only send JSON-serializable data')
         encoded_data = serialized.encode('utf-8')
         socket.conn.sendall(encoded_data)
+        socket.data_received.clear()
         socket.data_received.wait()
 
 #Sending command_msg to client with id client_id
@@ -409,7 +415,7 @@ class Server:
     def kill_client(self , client):
         # Wait for the threading.Event() object
         self._send(client , self.exit)
-        return
+        
 
 #Kill all the clients
     def kill_all_clients(self):
