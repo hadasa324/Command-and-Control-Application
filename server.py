@@ -10,7 +10,7 @@ from prettytable import PrettyTable
 import base64
 import io
 from PIL import ImageGrab , Image
-import shlex
+
 
 
 # A helper class that represents a client Thread
@@ -24,7 +24,7 @@ class ClientThread(threading.Thread):
         self.server = server
         self.last_alive_time = last_alive_time
         self.command_results = {}
-        self.data_received = threading.Event()  # Create a threading.Event() for self.command_thread to wait until the data is recived
+        
         
     # Recive data from the actual client
     def _recv(self ,socket):
@@ -43,14 +43,15 @@ class ClientThread(threading.Thread):
         
     #Add the result of excution to the socket's result and append it to the server command_results
     def add_result(self , command_id , excution_result):
-         if command_id not in self.command_results:
+        if command_id not in self.command_results:
             self.command_results[command_id] = []  
             # add the command result to the ClientTread list by key command_id
-            self.command_results[command_id].append(excution_result)
-            # update the command_results list of ClientTread by key command_id
-            self.server.add_client_command_result(command_id ,self.id , self.command_results)
-            print(colored(f'Received result for command {self.server.COMMANDS[command_id]} from client {self.id} \n' , 'green'))
-            self.data_received.set()
+        self.command_results[command_id].append(excution_result)
+        # update the command_results list of ClientTread by key command_id
+        self.server.add_client_command_result(command_id ,self.id , self.command_results)
+        print(colored(f'Received result for command {self.server.COMMANDS[command_id]} from client {self.id} \n' , 'green'))
+        self.server.data_received.set()
+            
 
     def run(self):
         print(colored("New client connected at time: {} with ID {}".format(self.last_alive_time ,self.id),"green"))
@@ -108,6 +109,7 @@ class Server:
         self.exit = {"command_type" :"exit"} # sending this message  in case want close the client socket
         self.command_running_event = threading.Event()
         self.command_running_event.clear()  # set to False initially
+        self.data_received = threading.Event()  # Create a threading.Event() for self.command_thread to wait until the data is recived
         
         
 
@@ -186,67 +188,79 @@ class Server:
 #Handles user input and executes commands for the server.
     def handle_commands(self): 
         # indicate that the command function is running
-        self.command_running_event.set() 
-        try:
-            while self.running:
-                if not self.have_conn:
-                    print(colored("There are no clients connected", "red"))
-                    return
+         
+        
+        while self.running:
+            self.data_received.clear()
+            if not self.have_conn:
+                print(colored("There are no clients connected", "red"))
+                return
                 
-                # Display operation options
-                operation = self.operation_options()
+            # Display operation options
+            operation = self.operation_options()
             
-                # Exit - close server operation
-                if operation == 4:
-                    print("Exiting...")
-                    self.running = False
-                    break
+            # Exit - close server operation
+            if operation == 4:
+                print("Exiting...")
+                self.running = False
+                break
 
-                # If not Exit can continue to the submenu
-                submenue_option =self.submenue_options()
+            # If not Exit can continue to the submenu
+            submenue_option =self.submenue_options()
 
-                # Send command operation
-                if operation == 1:
-                    cmd = self.command_options()
-                    command_to_send = self.generate_cmd( self.COMMANDS[cmd] , cmd)
+            # Send command operation
+            if operation == 1:
+                cmd = self.command_options()
+                command_to_send = self.generate_cmd( self.COMMANDS[cmd] , cmd)
 
-                    # Broadcast command to all connected clients
-                    if submenue_option == 2:
-                        with self.client_threads_lock:
-                            clients = dict(self.client_threads)
-                        for client_id in clients:
-                            self.send_cmd(client_id, command_to_send, cmd)
-                            
-                    # Send command to a single client
-                    else:
-                        client_id = self.choose_client()
+            # Broadcast command to all connected clients
+                if submenue_option == 2:
+                    with self.client_threads_lock:
+                        clients = dict(self.client_threads)
+                    for client_id in clients:
                         self.send_cmd(client_id, command_to_send, cmd)
+                    self.data_received.wait()
+                    
+                            
+                # Send command to a single client
+                else:
+                    client_id = self.choose_client()
+                    self.send_cmd(client_id, command_to_send, cmd)
+                    self.data_received.wait()
                         
                         
-                # Kill/remove client operation
-                elif operation == 2:
-                    # Broadcast kill command to all connected clients
-                    if submenue_option == 2:
-                        self.kill_all_clients()
+            # Kill/remove client operation
+            elif operation == 2:
+                # Broadcast kill command to all connected clients
+                if submenue_option == 2:
+                    self.kill_all_clients()
 
-                    else:
-                        client_id = self.choose_client()
-                        with self.client_threads_lock:
-                            target = self.client_threads[client_id]
-                        self.kill_client(target)
+                else:
+                    client_id = self.choose_client()
+                    with self.client_threads_lock:
+                        target = self.client_threads[client_id]
+                    self.kill_client(target)
+                    self.data_received.wait()
 
-                # Display command result operation
-                elif operation == 3:
-                    # Display all command results for all connected clients
-                    if submenue_option == 2:
-                            self.display_cmd_result_broadcast()
-                    # Display command result for a single client
-                    else:
-                        client_id = self.choose_client()
-                        self.display_cmd_result_single(int(client_id))
-        # indicate that the command function has stopped
-        finally: self.command_running_event.clear()  
+            # Display command result operation
+            elif operation == 3:
+                # Display all command results for all connected clients
+                if submenue_option == 2:
+                        self.display_cmd_result_broadcast()
+                # Display command result for a single client
+                else:
+                    client_id = self.choose_client()
+                    self.display_cmd_result_single(int(client_id))
 
+            # print(colored("Displays status:" , "green"))
+            # self.command_running_event.clear()
+            # self.refresh_status(5)
+            # self.command_running_event.set()
+            
+           
+
+            
+        
  
 #Add or updates if already existing results, 
 #command execution of a certain ClientThread according to command ID and ClientThread ID
@@ -265,12 +279,13 @@ class Server:
 #Remove ClientThread from client_threads list
     def remove_client_thread(self, client_id):
         with self.client_threads_lock:
-            client = self.client_threads[client_id]
             del self.client_threads[client_id]
         if len(self.client_threads) == 0:
            self.have_conn = False
         print("Client disconnected: {}".format(client_id))
-        client.data_received.set()
+        self.data_received.set()
+        
+
         
         
          
@@ -397,9 +412,10 @@ class Server:
             raise Exception('You can only send JSON-serializable data')
         encoded_data = serialized.encode('utf-8')
         socket.conn.sendall(encoded_data)
-        socket.data_received.clear()
-        socket.data_received.wait()
-
+        # self.data_received.wait()
+       
+        
+        
 #Sending command_msg to client with id client_id
     def send_cmd(self, client_id, command_msg, command_id):
         with self.client_threads_lock:
@@ -407,8 +423,9 @@ class Server:
                 print(colored("Invalid client ID", "red"))
                 return
             target = self.client_threads[client_id]
-        self._send(target ,command_msg)
         print(colored(f'Sent command {self.COMMANDS[command_id]} to client {client_id} \n',"green"))
+        self._send(target ,command_msg )
+        
        
 
 #Kill client
@@ -423,29 +440,48 @@ class Server:
             clients = dict(self.client_threads)
         for client_id in clients:
                 self.kill_client(self.client_threads[client_id])
+        self.data_received.wait()
         
         
 #Display the command results for all connected clients.
     def display_cmd_result_broadcast(self):
+        d ={}
+        i =1
         with self.command_results_lock:
             if not bool(self.command_results):
                 print(colored("Results not found", "red"))
                 return
-            print(colored("Choose command:", "yellow"))
-            for cmd_id in self.command_results:
-                print(colored(" {}) {}".format( cmd_id, self.COMMANDS[cmd_id]),"cyan"))
-            cmd = input(colored(">>> ", "blue")) 
+            print(colored("Choose a command:" , "yellow"))
+            for cmd_id  in self.command_results:
+                print(colored("{}) {}".format(i ,self.COMMANDS[cmd_id]), "cyan"))
+                d[i] = cmd_id
+                i+=1
+            cmd = self.input_operator(len(self.command_results))
+            choice = (d[cmd])
             print(colored("Result:","cyan"))
-            for client_id in self.command_results[int(cmd)]:
-                print(colored(str(self.command_results[int(cmd)][client_id]), "cyan"))
-                return
+            for client_id in self.command_results[int(choice)]:
+                print(colored(str(self.command_results[int(choice)][client_id]), "cyan"))
+
+
+#Display the command results for single client.
+    def display_cmd_result_single(self , client_id):
+        with self.client_threads_lock:
+            target = self.client_threads[client_id]
+        if not bool(target.command_results):
+            print(colored("Results not found", "red"))
+            return
+        else:
+            for r in target.command_results:
+                print(colored(f" the result of command with id {r} is:" , "cyan"))
+                print(colored(f"{target.command_results[r]}:" , "cyan"))
+           
 
 #Refresh CLI that display status
     def refresh_status(self, interval):
 
         while self.running:
-            if not self.command_running_event.is_set():
-                os.system('cls' if os.name == 'nt' else 'clear')
+            # if not self.command_running_event.is_set:
+                # os.system('cls' if os.name == 'nt' else 'clear')
                 with self.client_threads_lock:
                     # num_clients = len(self.client_threads)
                     table = PrettyTable()
@@ -458,6 +494,9 @@ class Server:
                 
                 # subprocess.call(['start', 'C:\\Windows\\System32\\cmd.exe', '/c', 'echo', status_str])
                 time.sleep(interval)
+                break
+                # self.command_running_event.set()
+                
                 
 
 SERVER_IP = '127.0.0.1'
