@@ -252,10 +252,9 @@ class Server:
                     client_id = self.choose_client()
                     self.display_cmd_result_single(int(client_id))
 
-            # print(colored("Displays status:" , "green"))
-            # self.command_running_event.clear()
-            # self.refresh_status(5)
-            # self.command_running_event.set()
+            print(colored("Displays status:" , "green"))
+            self.refresh_status(5)
+            
             
            
 
